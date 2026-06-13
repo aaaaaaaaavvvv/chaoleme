@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>吵了么 — AI辩论对手</title>
+<style>
+/* ── Reset & Base ──────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 16px; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: #f5f5f5;
+  color: #333;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+a { color: #2563eb; text-decoration: none; }
+button { cursor: pointer; font-family: inherit; }
+
+/* ── Layout ────────────────────────────────── */
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+/* ── Header ────────────────────────────────── */
+.header {
+  text-align: center;
+  padding: 32px 16px 24px;
+}
+.header h1 { font-size: 2rem; font-weight: 700; color: #1a1a2e; }
+.header p  { color: #666; margin-top: 4px; font-size: 0.95rem; }
+
+/* ── Topic Cards ───────────────────────────── */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+  margin-top: 8px;
+}
+.topic-card {
+  background: #fff;
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  cursor: pointer;
+  transition: box-shadow .15s, transform .15s;
+  border: 2px solid transparent;
+}
+.topic-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.1); transform: translateY(-1px); }
+.topic-card.selected { border-color: #2563eb; }
+.topic-card .card-num {
+  font-size: 0.75rem;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.topic-card h3 { font-size: 1.1rem; margin: 6px 0 8px; color: #1a1a2e; }
+.topic-card p  { font-size: 0.88rem; color: #666; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* ── Position Select ───────────────────────── */
+.position-panel {
+  background: #fff;
+  border-radius: 10px;
+  padding: 24px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  text-align: center;
+  margin-top: 8px;
+}
+.position-panel h2 { font-size: 1.2rem; margin-bottom: 6px; }
+.position-panel .bg-text { font-size: 0.9rem; color: #666; margin-bottom: 20px; }
+.position-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.pos-btn {
+  padding: 12px 28px;
+  border-radius: 8px;
+  border: 2px solid #ddd;
+  background: #fff;
+  font-size: 1rem;
+  transition: all .15s;
+}
+.pos-btn:hover { border-color: #2563eb; color: #2563eb; }
+.pos-btn.chosen { background: #2563eb; color: #fff; border-color: #2563eb; }
+.start-btn {
+  margin-top: 20px;
+  padding: 12px 48px;
+  border-radius: 8px;
+  border: none;
+  background: #2563eb;
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 600;
+  transition: opacity .15s;
+}
+.start-btn:disabled { opacity: .4; cursor: not-allowed; }
+.start-btn:not(:disabled):hover { opacity: .85; }
+.back-link { display: inline-block; margin-top: 16px; font-size: 0.9rem; color: #888; cursor: pointer; }
+
+/* ── Debate Chat ───────────────────────────── */
+.debate-header {
+  background: #fff;
+  border-radius: 10px;
+  padding: 16px 20px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.debate-header .topic-title { font-weight: 600; font-size: 0.95rem; }
+.debate-header .positions { font-size: 0.85rem; color: #666; }
+.debate-header .positions span { font-weight: 600; }
+.debate-header .you { color: #2563eb; }
+.debate-header .ai  { color: #dc2626; }
+
+.chat-area {
+  background: #fff;
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  min-height: 300px;
+  max-height: 55vh;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+
+.message { margin-bottom: 16px; }
+.message .meta {
+  font-size: 0.78rem;
+  color: #999;
+  margin-bottom: 4px;
+}
+.message .body {
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 0.93rem;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.msg-user .body { background: #eff6ff; border: 1px solid #bfdbfe; }
+.msg-ai   .body { background: #fef2f2; border: 1px solid #fecaca; }
+.msg-system .body { background: #f0fdf4; border: 1px solid #bbf7d0; text-align: center; }
+
+.thinking-tip {
+  display: block;
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: #888;
+  font-style: italic;
+  border-top: 1px dashed #e5e5e5;
+  padding-top: 6px;
+}
+
+.chat-input-wrap {
+  display: flex;
+  gap: 10px;
+}
+.chat-input-wrap textarea {
+  flex: 1;
+  padding: 12px;
+  border-radius: 8px;
+  border: 2px solid #e5e5e5;
+  resize: none;
+  font-size: 0.95rem;
+  font-family: inherit;
+  line-height: 1.5;
+  min-height: 56px;
+  max-height: 120px;
+}
+.chat-input-wrap textarea:focus { outline: none; border-color: #2563eb; }
+.chat-input-wrap button {
+  padding: 0 20px;
+  border-radius: 8px;
+  border: none;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  transition: opacity .15s;
+}
+.chat-input-wrap button:disabled { opacity: .4; cursor: not-allowed; }
+.chat-input-wrap button:not(:disabled):hover { opacity: .85; }
+
+.debate-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.debate-actions button {
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  background: #fff;
+  font-size: 0.9rem;
+  transition: all .15s;
+}
+.debate-actions button:hover { border-color: #2563eb; color: #2563eb; }
+.debate-actions button.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+.debate-actions button.danger  { border-color: #dc2626; color: #dc2626; }
+.debate-actions button.danger:hover { background: #fef2f2; }
+
+/* ── Summary Modal ─────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 16px;
+}
+.modal-box {
+  background: #fff;
+  border-radius: 12px;
+  padding: 28px;
+  max-width: 560px;
+  width: 100%;
+  box-shadow: 0 8px 32px rgba(0,0,0,.15);
+  max-height: 80vh;
+  overflow-y: auto;
+}
+.modal-box h3 { font-size: 1.1rem; margin-bottom: 16px; text-align: center; }
+.modal-box .summary-section { margin-bottom: 14px; }
+.modal-box .summary-section h4 { font-size: 0.9rem; color: #666; margin-bottom: 4px; }
+.modal-box .summary-section ul { padding-left: 18px; font-size: 0.9rem; }
+.modal-box .summary-section li { margin-bottom: 3px; }
+.modal-box .summary-section p { font-size: 0.9rem; }
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+.modal-actions button {
+  padding: 10px 22px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  background: #fff;
+  font-size: 0.9rem;
+  transition: all .15s;
+}
+.modal-actions button.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+.modal-actions button:hover { border-color: #2563eb; }
+
+/* ── Report ────────────────────────────────── */
+.report-box {
+  background: #fff;
+  border-radius: 10px;
+  padding: 24px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  margin-top: 12px;
+}
+.report-box h3 { font-size: 1.1rem; text-align: center; margin-bottom: 18px; }
+.report-box .section { margin-bottom: 18px; }
+.report-box .section h4 { font-size: 0.95rem; color: #555; margin-bottom: 6px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
+.report-box .item { padding: 6px 0; font-size: 0.88rem; border-bottom: 1px dashed #f0f0f0; }
+.report-box .item .phrase { color: #dc2626; font-weight: 500; }
+.report-box .reading-item { padding: 6px 0; font-size: 0.88rem; }
+.report-box .reading-item .title { font-weight: 600; }
+.report-box .reading-item .author { color: #888; }
+.report-box .reading-item .reason { color: #666; font-size: 0.83rem; margin-top: 2px; }
+
+/* ── Share Bar ─────────────────────────────── */
+.share-bar {
+  background: #fff;
+  border-radius: 10px;
+  padding: 12px 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.share-bar input {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #e5e5e5;
+  font-size: 0.85rem;
+  font-family: monospace;
+}
+.share-bar button {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  background: #fff;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+/* ── Loading ───────────────────────────────── */
+.loading {
+  text-align: center;
+  padding: 32px;
+  color: #888;
+}
+.spinner {
+  display: inline-block;
+  width: 24px; height: 24px;
+  border: 3px solid #e5e5e5;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: spin .6s linear infinite;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Toast ─────────────────────────────────── */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #333;
+  color: #fff;
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  z-index: 200;
+  animation: toast-in .25s ease;
+}
+@keyframes toast-in { from { opacity: 0; transform: translateX(-50%) translateY(12px); } }
+
+/* ── Error ─────────────────────────────────── */
+.error-msg {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 12px 16px;
+  border-radius: 8px;
+  text-align: center;
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+}
+
+/* ── Responsive ────────────────────────────── */
+@media (max-width: 500px) {
+  .header h1 { font-size: 1.5rem; }
+  .card-grid { grid-template-columns: 1fr; }
+  .debate-header { flex-direction: column; text-align: center; }
+  .chat-input-wrap { flex-direction: column; }
+  .chat-input-wrap button { padding: 12px; }
+}
+</style>
+</head>
+<body>
+
+<div class="container" id="app">
+  <!-- Header -->
+  <div class="header">
+    <h1>🔥 吵了么</h1>
+    <p>AI 辩论对手 — 一面思维镜子，不评判、不教导、只映照</p>
+  </div>
+
+  <!-- Dynamic content rendered by JS -->
+  <div id="view-root"></div>
+</div>
+
+<script>
+// ── 全局状态 ───────────────────────────────────────────────
+const STATE = {
+  debateId: null,
+  topicId: null,
+  topic: null,
+  userPosition: null,
+  aiPosition: null,
+  messages: [],
+  exchangeCount: 0,
+  summaries: [],
+  completed: false,
+  report: null,
+  loading: false,
+};
+
+// ── 初始化 ─────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  const urlDebateId = getDebateIdFromURL();
+  if (urlDebateId) {
+    loadDebate(urlDebateId);
+  } else {
+    renderLanding();
+  }
+});
+
+function getDebateIdFromURL() {
+  const m = location.pathname.match(/\/debate\/([a-f0-9]+)/);
+  return m ? m[1] : null;
+}
+
+// ── API 封装 ───────────────────────────────────────────────
+async function api(url, opts = {}) {
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+  });
+  return res.json();
+}
+
+// ── 渲染：议题选择页 ───────────────────────────────────────
+function renderLanding() {
+  STATE.debateId = null;
+  const root = document.getElementById('view-root');
+  root.innerHTML = `
+    <div class="card-grid">
+      ${Object.values(TOPICS_JSON).map(t => `
+        <div class="topic-card" onclick="selectTopic(${t.id})" id="card-${t.id}">
+          <div class="card-num">议题 ${t.id}</div>
+          <h3>${esc(t.title)}</h3>
+          <p>${esc(t.background)}</p>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  window.history.replaceState({}, '', '/');
+}
+
+function selectTopic(topicId) {
+  document.querySelectorAll('.topic-card').forEach(c => c.classList.remove('selected'));
+  document.getElementById(`card-${topicId}`).classList.add('selected');
+
+  const topic = TOPICS_JSON[topicId];
+  STATE.topicId = topicId;
+  STATE.topic = topic;
+
+  const root = document.getElementById('view-root');
+  root.innerHTML = `
+    <div class="position-panel">
+      <h2>${esc(topic.title)}</h2>
+      <p class="bg-text">${esc(topic.background)}</p>
+      <p style="margin-bottom:12px;font-weight:600;">选择你支持的立场：</p>
+      <div class="position-btns">
+        ${topic.positions.map((p, i) => `
+          <button class="pos-btn" id="pos-${i}" onclick="choosePosition('${esc(p)}', ${i})">${esc(p)}</button>
+        `).join('')}
+      </div>
+      <button class="start-btn" id="start-btn" disabled onclick="startDebate()">开始辩论</button>
+      <br>
+      <span class="back-link" onclick="renderLanding()">← 返回议题列表</span>
+    </div>
+  `;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function choosePosition(pos, idx) {
+  STATE.userPosition = pos;
+  document.querySelectorAll('.pos-btn').forEach(b => b.classList.remove('chosen'));
+  document.getElementById(`pos-${idx}`).classList.add('chosen');
+  document.getElementById('start-btn').disabled = false;
+}
+
+// ── 开始辩论 ──────────────────────────────────────────────
+async function startDebate() {
+  if (!STATE.userPosition) return;
+  setLoading(true);
+
+  try {
+    const data = await api('/api/debate/start', {
+      method: 'POST',
+      body: JSON.stringify({
+        topic_id: STATE.topicId,
+        position: STATE.userPosition,
+      }),
+    });
+
+    if (data.error) { showError(data.error); return; }
+
+    STATE.debateId = data.debate_id;
+    STATE.aiPosition = data.ai_position;
+    STATE.messages = [{ role: 'ai', content: data.opening, exchange: 0 }];
+    STATE.exchangeCount = 0;
+
+    window.history.replaceState({}, '', `/debate/${data.debate_id}`);
+    renderDebate();
+  } catch (e) {
+    showError('网络错误，请重试');
+  } finally {
+    setLoading(false);
+  }
+}
+
+// ── 加载已有辩论 ──────────────────────────────────────────
+async function loadDebate(debateId) {
+  setLoading(true);
+  try {
+    const data = await api(`/api/debate/${debateId}/state`);
+    if (data.error) {
+      showError(data.error);
+      renderLanding();
+      return;
+    }
+
+    STATE.debateId = data.id;
+    STATE.topicId = data.topic_id;
+    STATE.topic = TOPICS_JSON[data.topic_id];
+    STATE.userPosition = data.user_position;
+    STATE.aiPosition = data.ai_position;
+    STATE.messages = data.messages || [];
+    STATE.exchangeCount = data.exchange_count || 0;
+    STATE.summaries = data.summaries || [];
+    STATE.completed = data.completed || false;
+    STATE.report = data.report || null;
+
+    renderDebate();
+    if (STATE.report) renderReport();
+  } catch (e) {
+    showError('加载失败');
+    renderLanding();
+  } finally {
+    setLoading(false);
+  }
+}
+
+// ── 渲染：辩论界面 ────────────────────────────────────────
+function renderDebate() {
+  const root = document.getElementById('view-root');
+  root.innerHTML = `
+    <div class="debate-header">
+      <div class="topic-title">${esc(STATE.topic.title)}</div>
+      <div class="positions">
+        <span class="you">你：${esc(STATE.userPosition)}</span>
+        &nbsp;vs&nbsp;
+        <span class="ai">AI：${esc(STATE.aiPosition)}</span>
+        &nbsp;· 第 <strong id="round-num">${STATE.exchangeCount}</strong> 轮
+      </div>
+    </div>
+    <div class="chat-area" id="chat-area">
+      ${renderMessages()}
+    </div>
+    <div id="input-section">
+      ${STATE.completed ? `
+        <div style="text-align:center;color:#888;padding:12px;">辩论已结束</div>
+      ` : `
+        <div class="chat-input-wrap">
+          <textarea id="user-input" placeholder="输入你的论点…" rows="2"
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage();}"></textarea>
+          <button id="send-btn" onclick="sendMessage()">发送</button>
+        </div>
+      `}
+    </div>
+    <div class="debate-actions" id="debate-actions">
+      ${!STATE.completed ? `
+        <button onclick="switchPosition()">🔄 换位思考</button>
+        <button class="danger" onclick="endDebate()">🏁 结束辩论并查看报告</button>
+      ` : `
+        <button onclick="switchPosition()">🔄 换位再来</button>
+        <button class="primary" onclick="location.href='/'">新辩论</button>
+      `}
+    </div>
+    ${STATE.completed && STATE.report ? renderReportHTML() : ''}
+    <div class="share-bar">
+      <input type="text" id="share-url" readonly value="${location.origin}/debate/${STATE.debateId}">
+      <button onclick="copyShareLink()">📋 复制链接</button>
+    </div>
+  `;
+
+  scrollChatBottom();
+}
+
+function renderMessages() {
+  let html = '';
+  STATE.messages.forEach((m, i) => {
+    const roleClass = m.role === 'user' ? 'msg-user' : (m.role === 'system' ? 'msg-system' : 'msg-ai');
+    const label = m.role === 'user' ? `你 · 第${m.exchange || 0}轮` :
+                  (m.role === 'system' ? '系统' : `AI对手 · 第${m.exchange || 0}轮`);
+    const switchLabel = m.switch_point ? ' <span style="color:#888;">(换位)</span>' : '';
+
+    // 分离思考提示
+    let body = esc(m.content);
+    let tipHtml = '';
+    const tipMatch = m.content.match(/──\s*思考提示[\s\S]*$/);
+    if (tipMatch && m.role === 'ai') {
+      const mainContent = m.content.substring(0, m.content.indexOf(tipMatch[0])).trim();
+      body = esc(mainContent);
+      tipHtml = `<span class="thinking-tip">${esc(tipMatch[0])}</span>`;
+    }
+
+    if (m.role === 'system') {
+      body = m.content; // system messages may contain HTML
+      tipHtml = '';
+    }
+
+    html += `
+      <div class="message ${roleClass}">
+        <div class="meta">${label}${switchLabel}</div>
+        <div class="body">${body}${tipHtml}</div>
+      </div>
+    `;
+  });
+  if (!html) html = '<div style="text-align:center;color:#aaa;padding:32px;">等待 AI 开场…</div>';
+  return html;
+}
+
+function renderReportHTML() {
+  if (!STATE.report) return '';
+  const r = STATE.report;
+  return `
+    <div class="report-box">
+      <h3>📊 理性评分与反思报告</h3>
+      <div class="section">
+        <h4>🔍 情绪化用词</h4>
+        ${(r.emotion_markers || []).length === 0
+          ? '<p style="color:#888;font-size:0.88rem;">未检测到明显情绪化用词 ✓</p>'
+          : (r.emotion_markers || []).map(e => `
+            <div class="item"><span class="phrase">「${esc(e.phrase)}」</span> — ${esc(e.note)}</div>
+          `).join('')}
+      </div>
+      <div class="section">
+        <h4>⚠️ 人身攻击暗示</h4>
+        ${(r.ad_hominem_hints || []).length === 0
+          ? '<p style="color:#888;font-size:0.88rem;">未检测到人身攻击暗示 ✓</p>'
+          : (r.ad_hominem_hints || []).map(a => `
+            <div class="item"><span class="phrase">「${esc(a.phrase)}」</span> — ${esc(a.note)}</div>
+          `).join('')}
+      </div>
+      <div class="section">
+        <h4>🧠 逻辑观察</h4>
+        ${(r.logical_observations || []).map(o => `
+          <div class="item">${esc(o)}</div>
+        `).join('')}
+      </div>
+      <div class="section">
+        <h4>📚 推荐阅读</h4>
+        ${(r.reading_suggestions || []).map(b => `
+          <div class="reading-item">
+            <span class="title">${esc(b.title)}</span>
+            <span class="author">— ${esc(b.author)}</span>
+            <div class="reason">${esc(b.reason)}</div>
+          </div>
+        `).join('') || '<p style="color:#888;font-size:0.88rem;">暂无推荐</p>'}
+      </div>
+    </div>
+  `;
+}
+
+// ── 发送消息 ──────────────────────────────────────────────
+async function sendMessage() {
+  if (STATE.loading || STATE.completed) return;
+  const input = document.getElementById('user-input');
+  if (!input) return;
+  const content = input.value.trim();
+  if (!content) return;
+
+  input.value = '';
+  setLoading(true);
+  disableInput(true);
+
+  // 先显示用户消息
+  STATE.messages.push({ role: 'user', content, exchange: STATE.exchangeCount + 1 });
+  refreshChatArea();
+
+  try {
+    const data = await api(`/api/debate/${STATE.debateId}/message`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    });
+
+    if (data.error) {
+      showError(data.error);
+      STATE.messages.pop(); // 回滚
+      refreshChatArea();
+      return;
+    }
+
+    STATE.messages.push({ role: 'ai', content: data.reply, exchange: data.exchange });
+    STATE.exchangeCount = data.exchange;
+    refreshChatArea();
+    document.getElementById('round-num').textContent = STATE.exchangeCount;
+
+    // 有小结时弹窗
+    if (data.summary) {
+      STATE.summaries.push(data.summary);
+      showSummaryModal(data.summary);
+    }
+  } catch (e) {
+    showError('发送失败，请重试');
+  } finally {
+    setLoading(false);
+    disableInput(false);
+    const inp = document.getElementById('user-input');
+    if (inp) inp.focus();
+  }
+}
+
+// ── 小结弹窗 ──────────────────────────────────────────────
+function showSummaryModal(summary) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'summary-modal';
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <h3>📋 第${summary.after_exchange}轮小结</h3>
+      <div class="summary-section">
+        <h4>✅ 双方已达成共识</h4>
+        <ul>${(summary.consensus || []).map(c => `<li>${esc(c)}</li>`).join('')}</ul>
+      </div>
+      <div class="summary-section">
+        <h4>🎯 分歧本质</h4>
+        <p>${esc(summary.essence)}</p>
+      </div>
+      <div class="summary-section">
+        <p style="font-weight:500;">${esc(summary.question)}</p>
+      </div>
+      <div class="modal-actions">
+        <button class="primary" onclick="switchPosition();closeModal();">🔄 换位思考</button>
+        <button onclick="closeModal()">继续辩论</button>
+        <button class="danger" onclick="closeModal();endDebate();">🏁 结束辩论</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+}
+
+function closeModal() {
+  const m = document.getElementById('summary-modal');
+  if (m) m.remove();
+}
+
+// ── 换位思考 ──────────────────────────────────────────────
+async function switchPosition() {
+  if (STATE.completed) {
+    // 如果已完成，开始新一轮
+    STATE.completed = false;
+    STATE.report = null;
+  }
+
+  setLoading(true);
+  try {
+    const data = await api(`/api/debate/${STATE.debateId}/switch`, {
+      method: 'POST',
+    });
+
+    if (data.error) { showError(data.error); return; }
+
+    STATE.userPosition = data.new_user_position;
+    STATE.aiPosition = data.new_ai_position;
+    STATE.messages.push({
+      role: 'system',
+      content: `🔄 你已切换到「${data.new_user_position}」立场。<br>现在你为这个立场辩护，AI 将为「${data.new_ai_position}」辩护。`,
+      exchange: 0,
+    });
+    STATE.messages.push({ role: 'ai', content: data.reply, exchange: 0, switch_point: true });
+    STATE.exchangeCount = 0;
+    refreshDebateFull();
+    toast('已切换立场，请从新角度继续辩论');
+  } catch (e) {
+    showError('切换失败');
+  } finally {
+    setLoading(false);
+  }
+}
+
+// ── 结束辩论 & 生成报告 ────────────────────────────────────
+async function endDebate() {
+  if (!STATE.debateId) return;
+  closeModal();
+  setLoading(true);
+
+  try {
+    const data = await api(`/api/debate/${STATE.debateId}/report`, {
+      method: 'POST',
+    });
+
+    if (data.error) { showError(data.error); return; }
+
+    STATE.report = data.report;
+    STATE.completed = true;
+
+    // 在聊天区底部加一条系统消息
+    STATE.messages.push({
+      role: 'system',
+      content: '🏁 辩论结束。以下是 AI 生成的理性评分与反思报告。',
+      exchange: STATE.exchangeCount,
+    });
+
+    refreshDebateFull();
+    toast('报告已生成');
+  } catch (e) {
+    showError('生成报告失败');
+  } finally {
+    setLoading(false);
+  }
+}
+
+// ── UI 辅助 ────────────────────────────────────────────────
+function refreshChatArea() {
+  const area = document.getElementById('chat-area');
+  if (area) {
+    area.innerHTML = renderMessages();
+    scrollChatBottom();
+  }
+}
+
+function refreshDebateFull() {
+  renderDebate();
+}
+
+function scrollChatBottom() {
+  requestAnimationFrame(() => {
+    const area = document.getElementById('chat-area');
+    if (area) area.scrollTop = area.scrollHeight;
+  });
+}
+
+function disableInput(disabled) {
+  const inp = document.getElementById('user-input');
+  const btn = document.getElementById('send-btn');
+  if (inp) inp.disabled = disabled;
+  if (btn) btn.disabled = disabled;
+}
+
+function setLoading(v) {
+  STATE.loading = v;
+  const btn = document.getElementById('send-btn');
+  if (btn) {
+    btn.disabled = v;
+    btn.textContent = v ? '…' : '发送';
+  }
+}
+
+function showError(msg) {
+  const root = document.getElementById('view-root');
+  const existing = document.querySelector('.error-msg');
+  if (existing) existing.remove();
+  const div = document.createElement('div');
+  div.className = 'error-msg';
+  div.textContent = msg;
+  root.insertBefore(div, root.firstChild);
+  setTimeout(() => div.remove(), 4000);
+}
+
+function toast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+
+function copyShareLink() {
+  const inp = document.getElementById('share-url');
+  if (!inp) return;
+  inp.select();
+  document.execCommand('copy');
+  // Modern API fallback
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(inp.value);
+  }
+  toast('链接已复制，发送给朋友即可分享这场辩论');
+}
+
+function esc(s) {
+  if (typeof s !== 'string') return '';
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ── 将议题数据注入前端 ────────────────────────────────────
+const TOPICS_JSON = {{ topics | tojson }};
+</script>
+
+</body>
+</html>
