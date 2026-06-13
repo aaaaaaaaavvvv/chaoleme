@@ -23,27 +23,19 @@
 pip install -r requirements.txt
 ```
 
-### 2. 配置 API Key
-
-```bash
-cp .env.example .env
-```
-
-编辑 `.env`，填入你的 API Key（支持 DeepSeek / OpenAI 兼容接口）：
-
-```
-API_KEY=sk-你的key
-API_MODEL=deepseek-chat
-API_BASE_URL=https://api.deepseek.com
-```
-
-### 3. 启动
+### 2. 启动
 
 ```bash
 python app.py
 ```
 
-浏览器打开 `http://127.0.0.1:5000`，开始辩论。
+浏览器打开 `http://127.0.0.1:5000`。
+
+### 3. 填入 API Key
+
+首次打开会自动弹出设置页面，粘贴你的 API Key 保存即可。Key 只存在本地，不会上传。
+
+> 也支持传统方式：复制 `.env.example` 为 `.env`，填入 Key。两种方式任选其一。
 
 > **没有 API Key 也能跑**——Mock 模式会返回模拟回复，方便体验完整 UI 流程。
 
@@ -52,9 +44,10 @@ python app.py
 ```
 ├── app.py              # Flask 后端
 ├── templates/
-│   └── index.html      # 单页前端
+│   └── index.html      # 单页前端（含设置面板）
 ├── requirements.txt    # Python 依赖
-├── .env.example        # 环境变量模板
+├── .env.example        # 环境变量模板（可选）
+├── .gitignore
 └── README.md
 ```
 
@@ -63,4 +56,3 @@ python app.py
 - Python Flask
 - DeepSeek / OpenAI 兼容 API
 - 纯 HTML + CSS + JavaScript（无前端框架）
-
