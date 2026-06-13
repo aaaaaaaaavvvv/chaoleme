@@ -33,6 +33,54 @@ button { cursor: pointer; font-family: inherit; }
 .header h1 { font-size: 2rem; font-weight: 700; color: #1a1a2e; }
 .header p  { color: #666; margin-top: 4px; font-size: 0.95rem; }
 
+.settings-btn {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 4px 14px;
+  font-size: 0.8rem;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  background: #fff;
+  color: #888;
+  cursor: pointer;
+  transition: all .15s;
+}
+.settings-btn:hover { border-color: #2563eb; color: #2563eb; }
+
+/* ── API Settings Modal ─────────────────────── */
+.api-settings {
+  background: #fff;
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  margin-bottom: 12px;
+  text-align: left;
+}
+.api-settings h3 { font-size: 1rem; margin-bottom: 12px; }
+.api-settings label { display: block; font-size: 0.85rem; color: #666; margin-bottom: 4px; margin-top: 10px; }
+.api-settings input, .api-settings select {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+.api-settings input:focus, .api-settings select:focus { outline: none; border-color: #2563eb; }
+.api-settings .hint { font-size: 0.75rem; color: #999; margin-top: 2px; }
+.api-settings .form-actions { margin-top: 14px; display: flex; gap: 8px; }
+.api-settings .form-actions button {
+  padding: 8px 20px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  background: #fff;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.api-settings .form-actions button.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+.api-settings .status-ok { font-size: 0.85rem; color: #16a34a; margin-top: 8px; }
+.api-settings .status-no { font-size: 0.85rem; color: #dc2626; margin-top: 8px; }
+
 /* ── Topic Cards ───────────────────────────── */
 .card-grid {
   display: grid;
@@ -359,6 +407,7 @@ button { cursor: pointer; font-family: inherit; }
   <div class="header">
     <h1>🔥 吵了么</h1>
     <p>AI 辩论对手 — 一面思维镜子，不评判、不教导、只映照</p>
+    <button class="settings-btn" onclick="showApiSettings()" title="API 设置">⚙️ 设置 API</button>
   </div>
 
   <!-- Dynamic content rendered by JS -->
@@ -382,12 +431,17 @@ const STATE = {
 };
 
 // ── 初始化 ─────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   const urlDebateId = getDebateIdFromURL();
   if (urlDebateId) {
     loadDebate(urlDebateId);
   } else {
-    renderLanding();
+    const hasKey = await checkApiConfig();
+    if (!hasKey) {
+      showApiSettings();
+    } else {
+      renderLanding();
+    }
   }
 });
 
@@ -406,6 +460,71 @@ async function api(url, opts = {}) {
 }
 
 // ── 渲染：议题选择页 ───────────────────────────────────────
+// ── API 设置 ────────────────────────────────────────────────
+async function checkApiConfig() {
+  try {
+    const d = await api('/api/config');
+    return d.has_key;
+  } catch (e) { return false; }
+}
+
+async function showApiSettings() {
+  let cfg = { has_key: false, model: 'deepseek-chat', base_url: 'https://api.deepseek.com' };
+  try { cfg = await api('/api/config'); } catch (e) {}
+
+  const root = document.getElementById('view-root');
+  root.innerHTML = `
+    <div class="api-settings">
+      <h3>⚙️ API 设置</h3>
+      <p style="font-size:0.9rem;color:#666;margin-bottom:8px;">填入你的 API Key 即可使用真实 AI 辩论。Key 只存本地，不会上传。</p>
+      <label>API Key</label>
+      <input type="password" id="api-key-input" placeholder="sk-…">
+      <div class="hint">支持 DeepSeek、OpenAI 及所有兼容接口</div>
+      <label>模型</label>
+      <input type="text" id="api-model-input" value="${esc(cfg.model)}" placeholder="deepseek-chat">
+      <label>API 地址</label>
+      <input type="text" id="api-url-input" value="${esc(cfg.base_url)}" placeholder="https://api.deepseek.com">
+      <div class="form-actions">
+        <button class="primary" onclick="saveApiConfig()">💾 保存</button>
+        <button onclick="renderLanding()">取消</button>
+      </div>
+      <div id="api-status">${cfg.has_key ? '<div class="status-ok">✅ 已配置 API Key</div>' : '<div class="status-no">⚠️ 未配置 — 将使用模拟模式</div>'}</div>
+    </div>
+    <div class="card-grid">
+      ${Object.values(TOPICS_JSON).map(t => `
+        <div class="topic-card" onclick="selectTopic(${t.id})" id="card-${t.id}">
+          <div class="card-num">议题 ${t.id}</div>
+          <h3>${esc(t.title)}</h3>
+          <p>${esc(t.background)}</p>
+        </div>
+      `).join('')}
+    </div>
+    <p style="text-align:center;margin-top:12px;">
+      <a href="https://platform.deepseek.com/api_keys" target="_blank">获取 DeepSeek API Key →</a>
+    </p>
+  `;
+}
+
+async function saveApiConfig() {
+  const key = document.getElementById('api-key-input').value.trim();
+  const model = document.getElementById('api-model-input').value.trim();
+  const base_url = document.getElementById('api-url-input').value.trim();
+  try {
+    const d = await api('/api/config', {
+      method: 'POST',
+      body: JSON.stringify({ api_key: key, model, base_url }),
+    });
+    document.getElementById('api-status').innerHTML = d.has_key
+      ? '<div class="status-ok">✅ 配置已保存，可以开始辩论</div>'
+      : '<div class="status-no">⚠️ 请填写有效的 API Key</div>';
+    if (d.has_key) {
+      setTimeout(() => renderLanding(), 1500);
+    }
+  } catch (e) {
+    document.getElementById('api-status').innerHTML = '<div class="status-no">保存失败，请重试</div>';
+  }
+}
+
 function renderLanding() {
   STATE.debateId = null;
   const root = document.getElementById('view-root');

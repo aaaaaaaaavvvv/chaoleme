@@ -18,15 +18,42 @@ DATA_FILE = Path(__file__).parent / "debates.json"
 
 BEIJING_TZ = timezone(timedelta(hours=8))
 
-# ── AI Client (OpenAI 兼容接口，支持 DeepSeek / 任意兼容服务) ─
-API_KEY = os.environ.get("API_KEY", os.environ.get("ANTHROPIC_API_KEY", ""))
-MODEL = os.environ.get("API_MODEL", os.environ.get("ANTHROPIC_MODEL", "deepseek-chat"))
-BASE_URL = os.environ.get("API_BASE_URL", "https://api.deepseek.com")
+# ── AI Client ───────────────────────────────────────────────
+# 优先级：Web端设置 > .env 环境变量
+CONFIG_FILE = Path(__file__).parent / "api_config.json"
 
-ai_client = None
-if API_KEY:
-    from openai import OpenAI
-    ai_client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
+def _load_config():
+    if CONFIG_FILE.exists():
+        try:
+            return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+def _save_config(cfg: dict):
+    CONFIG_FILE.write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+
+def _get_api_key():
+    """Web 端设置的 key 优先，否则用 .env 里的"""
+    cfg = _load_config()
+    return cfg.get("api_key") or os.environ.get("API_KEY") or os.environ.get("ANTHROPIC_API_KEY") or ""
+
+def _get_model():
+    cfg = _load_config()
+    return cfg.get("model") or os.environ.get("API_MODEL") or os.environ.get("ANTHROPIC_MODEL") or "deepseek-chat"
+
+def _get_base_url():
+    cfg = _load_config()
+    return cfg.get("base_url") or os.environ.get("API_BASE_URL") or "https://api.deepseek.com"
+
+def _build_ai_client():
+    key = _get_api_key()
+    if key:
+        from openai import OpenAI
+        return OpenAI(api_key=key, base_url=_get_base_url())
+    return None
+
+ai_client = _build_ai_client()
 
 # ── 议题数据 ───────────────────────────────────────────────
 TOPICS = {
@@ -257,6 +284,30 @@ def view_debate(debate_id):
 @app.route("/api/topics")
 def api_topics():
     return jsonify(list(TOPICS.values()))
+
+@app.route("/api/config", methods=["GET", "POST"])
+def api_config():
+    """读取或设置 API 配置（Web 端填入 Key）"""
+    global ai_client
+    if request.method == "GET":
+        cfg = _load_config()
+        return jsonify({
+            "has_key": bool(_get_api_key()),
+            "model": _get_model(),
+            "base_url": _get_base_url(),
+        })
+    # POST: 保存配置
+    data = request.get_json()
+    cfg = _load_config()
+    if data.get("api_key"):
+        cfg["api_key"] = data["api_key"].strip()
+    if data.get("model"):
+        cfg["model"] = data["model"].strip()
+    if data.get("base_url"):
+        cfg["base_url"] = data["base_url"].strip()
+    _save_config(cfg)
+    ai_client = _build_ai_client()
+    return jsonify({"ok": True, "has_key": bool(_get_api_key())})
 
 @app.route("/api/debate/start", methods=["POST"])
 def api_start_debate():
