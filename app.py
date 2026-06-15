@@ -646,7 +646,7 @@ def _generate_summary(debate: dict) -> dict:
 
 # ── 启动 ───────────────────────────────────────────────────
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 5010))
     # 生产环境请设 FLASK_DEBUG=0；开发默认关闭 reload 以避免 Windows 下多进程残留
     debug = os.environ.get("FLASK_DEBUG", "0") == "1"
     app.run(host="0.0.0.0", port=port, debug=debug, use_reloader=False)
