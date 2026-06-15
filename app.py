@@ -198,7 +198,7 @@ def call_ai(system_text: str, messages: list[dict], max_tokens: int = 800) -> st
 
     try:
         resp = ai_client.chat.completions.create(
-            model=MODEL,
+            model=_get_model(),
             max_tokens=max_tokens,
             messages=api_messages,
             temperature=0.7,
@@ -208,19 +208,68 @@ def call_ai(system_text: str, messages: list[dict], max_tokens: int = 800) -> st
         print(f"[AI Error] {e}")
         return _mock_response(messages)
 
+# Mock 回复模板池，避免总重复同一句
+_MOCK_TEMPLATES = [
+    {
+        "mirror": "你的论点是……按这个逻辑推下去，似乎在说{nub}。",
+        "invite": "但如果换一个具体情境——{context}——同样的推理链条是否依然站得住脚？",
+        "hint_type": "盲区扫描",
+        "hint": "你预设了一个前提而未加论证：{blindspot}。如果这个前提不成立，你的结论会如何变化？",
+    },
+    {
+        "mirror": "你似乎从{nub}得出了自己的结论。",
+        "invite": "我想请你考虑：{context}，在这个场景下，你的论证还成立吗？",
+        "hint_type": "盲区扫描",
+        "hint": "你的论证中，「{blindspot}」这个词是关键，但你并没有界定它的边界。不同的人对它的定义可能完全不同。",
+    },
+    {
+        "mirror": "按你的推理，核心在于{nub}。",
+        "invite": "如果你的对手举出一个具体反例——比如{context}——你会如何回应？",
+        "hint_type": "假设探测",
+        "hint": "你把两件事做了因果连接：「{blindspot}」是原因还是相关现象？如果方向反过来也成立，你的论证会受影响吗？",
+    },
+    {
+        "mirror": "你的逻辑链条大致是：{nub}，因此观点成立。",
+        "invite": "但这条链上有一个中间环节值得再推敲：{context}，这一步是否总是必然的？",
+        "hint_type": "盲区扫描",
+        "hint": "你跳过了「{blindspot}」这个中间变量。如果这个变量不受你的前提控制，结论可能就不那么稳了。",
+    },
+]
+
 def _mock_response(messages: list[dict]) -> str:
     """无 API Key 时的模拟回复，方便测试 UI"""
-    last_user = ""
-    for m in reversed(messages):
-        if m["role"] == "user":
-            last_user = m["content"]
+    import random
+    user_messages = [m for m in messages if m["role"] == "user"]
+    last_user = user_messages[-1]["content"] if user_messages else ""
+
+    # 根据用户发言内容动态选取关键词，使 mock 不那么千篇一律
+    topic_hints = {
+        "个人选择": ("选择自由决定了工作方式", "一个求职者面对所有公司都要求996的社会", "所有劳动者拥有平等的议价能力"),
+        "系统压力": ("外部结构压迫个体妥协", "一个行业里没有任何人主动选择但每个人都996", "结构压力与个人意志谁是原因谁是结果"),
+        "辞职": ("只要辞职就能摆脱一切束缚", "一个人辞职后面临简历空白、社保中断、行业封杀", "辞职的代价对所有人是平等的"),
+        "自由": ("自由意志决定一切", "信息完全不对称的弱势地位", "所有参与者拥有对等的信息和选择权"),
+        "健康": ("健康受损就能拒绝加班", "房贷、子女教育、父母医疗同时压在一个人身上", "健康和生活压力是可以独立取舍的"),
+        "加班": ("加班就是不自愿的选择", "如果薪资翻倍、自愿加班的人会不会变多", "加班与不自愿是同一回事"),
+    }
+
+    # 尝试匹配话题
+    nub = "某个核心预设"
+    context = "当条件发生变化时"
+    blindspot = "一个隐含前提"
+
+    for keyword, (n, c, b) in topic_hints.items():
+        if keyword in last_user:
+            nub, context, blindspot = n, c, b
             break
 
+    tpl = random.choice(_MOCK_TEMPLATES)
+    exchange_count = len(user_messages)
+    phase_note = "（提醒：这是模拟模式，请配置 API Key 以获得真实 AI 辩论体验）"
     return (
-        f"你的论点是「{last_user[:40]}…」。按你的逻辑，这个推论似乎自洽，"
-        f"但如果换一个具体情境——比如当事人处于信息不对称的弱势地位——同样的推理链条是否还站得住脚？\n\n"
-        f"── 思考提示（盲区扫描）：你预设了一个前提而未加论证：所有参与方拥有对等的信息和选择能力。"
-        f"如果这个前提不成立，你的结论会如何变化？"
+        f"{tpl['mirror'].format(nub=nub)}\n"
+        f"{tpl['invite'].format(context=context)}\n\n"
+        f"── 思考提示（{tpl['hint_type']}）：{tpl['hint'].format(blindspot=blindspot)}\n"
+        f"── {phase_note}"
     )
 
 def build_debate_system(topic: dict, ai_position: str, user_position: str) -> str:
@@ -291,16 +340,21 @@ def api_config():
     global ai_client
     if request.method == "GET":
         cfg = _load_config()
+        ui_key = cfg.get("api_key", "")
+        env_key = os.environ.get("API_KEY") or os.environ.get("ANTHROPIC_API_KEY") or ""
         return jsonify({
-            "has_key": bool(_get_api_key()),
-            "model": _get_model(),
-            "base_url": _get_base_url(),
+            "has_ui_key": bool(ui_key),
+            "has_env_key": bool(env_key),
+            "has_key": bool(ui_key or env_key),
+            "ui_key_hint": _mask_key(ui_key) if ui_key else "",
+            "env_key_hint": _mask_key(env_key) if env_key else "",
+            "model": cfg.get("model") or os.environ.get("API_MODEL") or os.environ.get("ANTHROPIC_MODEL") or "deepseek-chat",
+            "base_url": cfg.get("base_url") or os.environ.get("API_BASE_URL") or "https://api.deepseek.com",
         })
     # POST: 保存配置
     data = request.get_json()
     cfg = _load_config()
-    if data.get("api_key"):
-        cfg["api_key"] = data["api_key"].strip()
+    cfg["api_key"] = (data.get("api_key") or "").strip()
     if data.get("model"):
         cfg["model"] = data["model"].strip()
     if data.get("base_url"):
@@ -308,6 +362,25 @@ def api_config():
     _save_config(cfg)
     ai_client = _build_ai_client()
     return jsonify({"ok": True, "has_key": bool(_get_api_key())})
+
+def _mask_key(key: str) -> str:
+    """将 key 显示为 sk-****abcd 格式"""
+    if not key:
+        return ""
+    if len(key) <= 10:
+        return key[:3] + "***"
+    return key[:5] + "****" + key[-4:]
+
+@app.route("/api/debug")
+def api_debug():
+    """调试端点"""
+    key = _get_api_key()
+    return jsonify({
+        "ai_client_ok": ai_client is not None,
+        "has_key": bool(key),
+        "key_preview": key[:15] + "***" if key else "NONE",
+        "model": _get_model(),
+    })
 
 @app.route("/api/debate/start", methods=["POST"])
 def api_start_debate():
@@ -347,6 +420,7 @@ def api_start_debate():
         "role": "ai",
         "content": ai_opening,
         "exchange": 0,
+        "is_opening": True,
     })
     put_debate(debate)
 

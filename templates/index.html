@@ -477,8 +477,21 @@ async function checkApiConfig() {
 }
 
 async function showApiSettings() {
-  let cfg = { has_key: false, model: 'deepseek-chat', base_url: 'https://api.deepseek.com' };
+  let cfg = { has_ui_key: false, has_env_key: false, has_key: false, ui_key_hint: '', env_key_hint: '', model: 'deepseek-chat', base_url: 'https://api.deepseek.com' };
   try { cfg = await api('/api/config'); } catch (e) {}
+
+  // 决定状态提示
+  let statusHtml = '';
+  if (cfg.has_ui_key) {
+    statusHtml = `<div class="status-ok">✅ 已配置 API Key（${cfg.ui_key_hint}）</div>`;
+  } else if (cfg.has_env_key) {
+    statusHtml = `<div class="status-ok">✅ 检测到 .env 中的 Key（${cfg.env_key_hint}），无需重复设置</div>`;
+  } else {
+    statusHtml = `<div class="status-no">⚠️ 未配置 — 将使用模拟模式</div>`;
+  }
+
+  // key 输入框的 placeholder 提示
+  const keyPlaceholder = cfg.has_ui_key ? cfg.ui_key_hint + '（已设置，可修改）' : 'sk-…';
 
   const root = document.getElementById('view-root');
   root.innerHTML = `
@@ -486,7 +499,7 @@ async function showApiSettings() {
       <h3>⚙️ API 设置</h3>
       <p style="font-size:0.9rem;color:#666;margin-bottom:8px;">填入你的 API Key 即可使用真实 AI 辩论。Key 只存本地，不会上传。</p>
       <label>API Key</label>
-      <input type="password" id="api-key-input" placeholder="sk-…">
+      <input type="password" id="api-key-input" placeholder="${esc(keyPlaceholder)}">
       <div class="hint">支持 DeepSeek、OpenAI 及所有兼容接口</div>
       <label>模型</label>
       <input type="text" id="api-model-input" value="${esc(cfg.model)}" placeholder="deepseek-chat">
@@ -494,9 +507,10 @@ async function showApiSettings() {
       <input type="text" id="api-url-input" value="${esc(cfg.base_url)}" placeholder="https://api.deepseek.com">
       <div class="form-actions">
         <button class="primary" onclick="saveApiConfig()">💾 保存</button>
+        ${cfg.has_ui_key ? '<button onclick="clearApiConfig()">🗑 清除</button>' : ''}
         <button onclick="renderLanding()">取消</button>
       </div>
-      <div id="api-status">${cfg.has_key ? '<div class="status-ok">✅ 已配置 API Key</div>' : '<div class="status-no">⚠️ 未配置 — 将使用模拟模式</div>'}</div>
+      <div id="api-status">${statusHtml}</div>
     </div>
     <div class="card-grid">
       ${Object.values(TOPICS_JSON).map(t => `
@@ -522,14 +536,26 @@ async function saveApiConfig() {
       method: 'POST',
       body: JSON.stringify({ api_key: key, model, base_url }),
     });
-    document.getElementById('api-status').innerHTML = d.has_key
-      ? '<div class="status-ok">✅ 配置已保存，可以开始辩论</div>'
-      : '<div class="status-no">⚠️ 请填写有效的 API Key</div>';
     if (d.has_key) {
+      document.getElementById('api-status').innerHTML = '<div class="status-ok">✅ 配置已保存，可以开始辩论</div>';
       setTimeout(() => renderLanding(), 1500);
+    } else {
+      document.getElementById('api-status').innerHTML = '<div class="status-no">⚠️ 请填写有效的 API Key</div>';
     }
   } catch (e) {
     document.getElementById('api-status').innerHTML = '<div class="status-no">保存失败，请重试</div>';
+  }
+}
+
+async function clearApiConfig() {
+  try {
+    await api('/api/config', {
+      method: 'POST',
+      body: JSON.stringify({ api_key: '' }),
+    });
+    showApiSettings(); // 刷新设置面板
+  } catch (e) {
+    document.getElementById('api-status').innerHTML = '<div class="status-no">清除失败，请重试</div>';
   }
 }
 
@@ -696,8 +722,16 @@ function renderMessages() {
   let html = '';
   STATE.messages.forEach((m, i) => {
     const roleClass = m.role === 'user' ? 'msg-user' : (m.role === 'system' ? 'msg-system' : 'msg-ai');
-    const label = m.role === 'user' ? `你 · 第${m.exchange || 0}轮` :
-                  (m.role === 'system' ? '系统' : `AI对手 · 第${m.exchange || 0}轮`);
+    let label;
+    if (m.role === 'user') {
+      label = `你 · 第${m.exchange}轮`;
+    } else if (m.role === 'system') {
+      label = '系统';
+    } else if (m.is_opening) {
+      label = 'AI 开场';
+    } else {
+      label = `AI对手 · 第${m.exchange}轮`;
+    }
     const switchLabel = m.switch_point ? ' <span style="color:#888;">(换位)</span>' : '';
 
     // 分离思考提示
